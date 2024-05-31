@@ -6,6 +6,12 @@ import path from "path";
 import { promises as fs } from "fs";
 import WebSocket from "ws";
 
+import { FormData, File } from "formdata-node";
+import { fileFromPath } from "formdata-node/file-from-path";
+import { FormDataEncoder } from "form-data-encoder";
+
+import { Readable } from "stream";
+
 dotenv.config();
 
 const app: Express = express();
@@ -33,25 +39,48 @@ const isValidHttpUrl = (string: string) => {
 };
 
 /**
- * Downloads an image from a URL and saves it to a specified folder.
- * @param url The URL of the image to download.
- * @param folder The folder where the image should be saved.
- * @returns The filename of the saved image.
+ * Downloads an image from a URL and uploads it to a server via the ComfyUI upload API.
+ * @param imageUrl The URL of the image to download.
+ * @param serverAddress The address of the ComfyUI server where the image will be uploaded.
+ * @param imageType The type/category of the image being uploaded. Defaults to "input".
+ * @param overwrite Whether to overwrite an existing file with the same name. Defaults to false.
+ * @returns The server response after the upload.
  */
-const downloadAndSaveImage = async (
-  url: string,
-  folder: string
-): Promise<string> => {
+const downloadAndUploadImage = async (
+  imageUrl: string,
+  serverAddress: string,
+  imageType: string = "input",
+  overwrite: boolean = true
+): Promise<any> => {
   const response = await axios({
-    url,
+    url: imageUrl,
     responseType: "arraybuffer",
   });
-  const fileName = path.basename(new URL(url).pathname);
-  const filePath = path.join(folder, fileName);
-  await fs.writeFile(filePath, response.data);
-  return fileName;
-};
 
+  const fileName = path.basename(new URL(imageUrl).pathname);
+  const tempFilePath = path.join("/tmp", fileName);
+  await fs.writeFile(tempFilePath, response.data);
+
+  const formData = new FormData();
+  const file = await fileFromPath(tempFilePath);
+  formData.append("image", file);
+  formData.append("type", imageType);
+  formData.append("overwrite", overwrite.toString());
+
+  const encoder = new FormDataEncoder(formData);
+
+  const uploadResponse = await axios.post(
+    `${serverAddress}/upload/image`,
+    Readable.from(encoder),
+    {
+      headers: encoder.headers,
+    }
+  );
+
+  await fs.unlink(tempFilePath);
+
+  return uploadResponse.data;
+};
 /**
  * Processes input objects, downloading images from URLs and saving them locally.
  * @param input The input object with potential URL values.
@@ -60,13 +89,15 @@ const downloadAndSaveImage = async (
 const processInput = async (input: {
   [key: string]: string;
 }): Promise<{ [key: string]: string }> => {
-  const folder = process.env.COMFY_INPUT_FOLDER;
   const processedInput = { ...input };
   for (const key in processedInput) {
     const value = processedInput[key];
     if (isValidHttpUrl(value)) {
-      const fileName = await downloadAndSaveImage(value, folder as string);
-      processedInput[key] = fileName;
+      const resp = await downloadAndUploadImage(
+        value,
+        process.env.COMFY_URL as string
+      );
+      processedInput[key] = resp.name;
     }
   }
   return processedInput;
@@ -169,10 +200,10 @@ app.post("/generate", async (req: Request, res: Response) => {
   if (!workflowValues) {
     return res.status(400).send("Missing workflowValues");
   }
-
   try {
     const processedWorkflowValues = await processInput(workflowValues);
     const prompt = mapWorkflowValues(workflow, processedWorkflowValues);
+    console.log("Prompt:", prompt);
     const resp = await axios.post(
       process.env.COMFY_PROMPT_URL as string,
       { prompt },
