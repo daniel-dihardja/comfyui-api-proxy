@@ -131,7 +131,7 @@ const mapWorkflowValues = (
  */
 const trackProgress = async (promptId: string) => {
   return new Promise<void>((resolve) => {
-    const comfyWsUrl = process.env.COMFY_WS_URL;
+    const comfyWsUrl = `${process.env.COMFY_URL}/ws`;
     if (!comfyWsUrl) {
       throw new Error("Missing Comfy WS URL");
     }
@@ -154,39 +154,67 @@ const trackProgress = async (promptId: string) => {
 };
 
 /**
- * Finds and returns the last image added to a directory as a base64 string.
- * @param directory The directory to search in.
- * @returns The base64 string of the last added image.
+ * Fetches the history for a given prompt ID and retrieves the corresponding images.
+ * @param {string} promptId - The ID of the prompt.
+ * @returns {Promise<Array<Buffer>>} - A promise that resolves to an array of image data in Buffer format.
  */
-const getLastImageAdded = async (directory: string) => {
+async function fetchImagesFromHistory(promptId: string) {
   try {
-    const files = await fs.readdir(directory, { withFileTypes: true });
-    const images = files
-      .filter((file) => file.isFile())
-      .map((file) => ({
-        name: file.name,
-        path: path.join(directory, file.name),
-      }));
-    const imageStats = await Promise.all(
-      images.map(async (image) => ({
-        ...image,
-        stats: await fs.stat(image.path),
-      }))
+    // Fetch the history data
+    const historyResponse = await axios.get(
+      `${process.env.COMFY_URL}/history/${promptId}`
     );
-    imageStats.sort(
-      (a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime()
-    );
-    if (imageStats.length > 0) {
-      const imageData = await fs.readFile(imageStats[0].path);
-      return imageData.toString("base64");
+    const historyData = historyResponse.data[promptId].outputs["14"].images;
+
+    if (historyData && historyData.length) {
+      const imagePromises = historyData.map(
+        (item: { filename: string; subfolder: string }) =>
+          fetchImage(item.filename, item.subfolder, "output")
+      );
+
+      // Fetch all images concurrently
+      return Promise.all(imagePromises);
     } else {
-      throw new Error("No images found in the directory.");
+      throw new Error("No history data available");
     }
   } catch (error) {
-    console.error("Error getting the last added image:", error);
+    console.error("Error fetching images from history:", error);
     throw error;
   }
-};
+}
+
+/**
+ * Retrieves an image from the ComfyUI server based on the provided parameters and returns it as a base64 string.
+ * @param {string} filename - The name of the image file.
+ * @param {string} subfolder - The subfolder where the image is stored.
+ * @param {string} folderType - The type of the folder (e.g., 'input', 'output').
+ * @returns {Promise<string>} - A promise that resolves to the image data in base64 format.
+ */
+async function fetchImage(
+  filename: string,
+  subfolder: string,
+  folderType: string
+): Promise<string> {
+  try {
+    const params = new URLSearchParams({
+      filename,
+      subfolder,
+      type: folderType,
+    }).toString();
+    const response = await axios.get(
+      `${process.env.COMFY_URL}/view?${params}`,
+      {
+        responseType: "arraybuffer", // Important to handle binary data
+      }
+    );
+    // Convert buffer to base64 string
+    const base64Image = Buffer.from(response.data).toString("base64");
+    return base64Image;
+  } catch (error) {
+    console.error("Error fetching an image:", error);
+    throw error;
+  }
+}
 
 /**
  * Endpoint to generate a prompt based on workflow and values.
@@ -203,16 +231,15 @@ app.post("/generate", async (req: Request, res: Response) => {
   try {
     const processedWorkflowValues = await processInput(workflowValues);
     const prompt = mapWorkflowValues(workflow, processedWorkflowValues);
-    console.log("Prompt:", prompt);
     const resp = await axios.post(
-      process.env.COMFY_PROMPT_URL as string,
+      `${process.env.COMFY_URL}/prompt`,
       { prompt },
       { headers: { "Content-Type": "application/json" } }
     );
     await trackProgress(resp.data.prompt_id);
-    const base64Img = await getLastImageAdded(
-      process.env.COMFY_OUTPUT_FOLDER as string
-    );
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const historyImages = await fetchImagesFromHistory(resp.data.prompt_id);
+    const base64Img = historyImages[0];
     res.send({ base64Img });
   } catch (error) {
     console.error(error);
