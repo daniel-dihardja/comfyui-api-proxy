@@ -58,35 +58,45 @@ const downloadAndUploadImage = async (
   imageType: string = "input",
   overwrite: boolean = true
 ): Promise<any> => {
+  // Fetch the image as a buffer
   const response = await axios({
     url: imageUrl,
     responseType: "arraybuffer",
   });
 
-  const fileName = path.basename(new URL(imageUrl).pathname);
-  const tempFilePath = path.join("/tmp", fileName);
-  await fs.writeFile(tempFilePath, response.data);
+  // Extract the file name from the URL
+  const url = new URL(imageUrl);
+  const fileName = url.pathname.split("/").pop() || "default_name.png";
 
+  // Create a buffer from the response data
+  const imageBuffer = Buffer.from(response.data);
+
+  // Create a File object from the buffer with the correct file name
+  const file = new File([imageBuffer], fileName, {
+    type: "image/png", // Optionally adjust or dynamically determine MIME type if needed
+  });
+
+  // Set up FormData with the File object
   const formData = new FormData();
-  const file = await fileFromPath(tempFilePath);
   formData.append("image", file);
   formData.append("type", imageType);
   formData.append("overwrite", overwrite.toString());
 
+  // Encode FormData using FormDataEncoder
   const encoder = new FormDataEncoder(formData);
 
+  // Upload the image using the FormDataEncoder
   const uploadResponse = await axios.post(
     `${serverAddress}/upload/image`,
-    Readable.from(encoder),
+    Readable.from(encoder.encode()), // Use encode() method to convert to stream
     {
-      headers: { ...encoder.headers, Authorization: basicAuth },
+      headers: { ...encoder.headers }, // Encoder handles Content-Type and boundary
     }
   );
 
-  await fs.unlink(tempFilePath);
-
   return uploadResponse.data;
 };
+
 /**
  * Processes input objects, downloading images from URLs and saving them locally.
  * @param input The input object with potential URL values.
