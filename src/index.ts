@@ -17,6 +17,12 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 3000;
 
+const basicAuth =
+  "Basic " +
+  Buffer.from(
+    `${process.env.COMFY_WEB_USER}:${process.env.COMFY_WEB_PASSWORD}`
+  ).toString("base64");
+
 // Middleware to parse JSON bodies
 app.use(express.json());
 
@@ -73,7 +79,7 @@ const downloadAndUploadImage = async (
     `${serverAddress}/upload/image`,
     Readable.from(encoder),
     {
-      headers: encoder.headers,
+      headers: { ...encoder.headers, Authorization: basicAuth },
     }
   );
 
@@ -135,14 +141,20 @@ const trackProgress = async (promptId: string) => {
     if (!comfyWsUrl) {
       throw new Error("Missing Comfy WS URL");
     }
-    const client = new WebSocket(comfyWsUrl);
+    const client = new WebSocket(comfyWsUrl, {
+      headers: {
+        Authorization: basicAuth,
+      },
+    });
     client.on("message", (data, isBinary) => {
       if (!isBinary) {
         const wsData = JSON.parse(data.toString());
         if (
-          wsData.type === "progress" &&
-          wsData.data.prompt_id === promptId &&
-          wsData.data.value === wsData.data.max
+          (wsData.type === "progress" &&
+            wsData.data.prompt_id === promptId &&
+            wsData.data.value === wsData.data.max) ||
+          (wsData.type === "status" &&
+            wsData.data.status.exec_info.queue_remaining === 0)
         ) {
           console.log("Prompt generation complete");
           client.close();
@@ -162,8 +174,14 @@ async function fetchImagesFromHistory(promptId: string) {
   try {
     // Fetch the history data
     const historyResponse = await axios.get(
-      `${process.env.COMFY_URL}/history/${promptId}`
+      `${process.env.COMFY_URL}/history/${promptId}`,
+      {
+        headers: {
+          Authorization: basicAuth,
+        },
+      }
     );
+
     const historyData = historyResponse.data[promptId].outputs["14"].images;
 
     if (historyData && historyData.length) {
@@ -205,6 +223,9 @@ async function fetchImage(
       `${process.env.COMFY_URL}/view?${params}`,
       {
         responseType: "arraybuffer", // Important to handle binary data
+        headers: {
+          Authorization: basicAuth,
+        },
       }
     );
     // Convert buffer to base64 string
@@ -234,7 +255,12 @@ app.post("/generate", async (req: Request, res: Response) => {
     const resp = await axios.post(
       `${process.env.COMFY_URL}/prompt`,
       { prompt },
-      { headers: { "Content-Type": "application/json" } }
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: basicAuth,
+        },
+      }
     );
     await trackProgress(resp.data.prompt_id);
     await new Promise((resolve) => setTimeout(resolve, 1000));
