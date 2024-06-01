@@ -2,12 +2,9 @@
 import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 import axios from "axios";
-import path from "path";
-import { promises as fs } from "fs";
 import WebSocket from "ws";
 
 import { FormData, File } from "formdata-node";
-import { fileFromPath } from "formdata-node/file-from-path";
 import { FormDataEncoder } from "form-data-encoder";
 
 import { Readable } from "stream";
@@ -280,7 +277,7 @@ async function fetchImage(
 }
 
 /**
- * Endpoint to generate a prompt based on workflow and values.
+ * Endpoint to generate a prompt based on workflow and workflowValues.
  */
 app.post("/generate", async (req: Request, res: Response) => {
   const workflow = req.body.workflow;
