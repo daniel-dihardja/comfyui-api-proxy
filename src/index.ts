@@ -45,6 +45,37 @@ const isValidHttpUrl = (string: string) => {
 };
 
 /**
+ * Determines the MIME type based on the file extension of a given filename.
+ *
+ * @param fileName The name of the file, including its extension.
+ * @returns The MIME type corresponding to the file's extension, or a default
+ *          MIME type if the extension is not recognized or absent.
+ */
+function determineMimeType(fileName: string): string {
+  // Extract the last segment after a '.' character, which is assumed to be the file extension.
+  const extension: string | undefined = fileName.split(".").pop();
+
+  // Define a mapping of file extensions to MIME types.
+  const mimeTypeMap: { [key: string]: string } = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    bmp: "image/bmp",
+    svg: "image/svg+xml",
+    webp: "image/webp",
+  };
+
+  // Attempt to get the MIME type from the map using the file extension.
+  // If `extension` is undefined, it defaults to an empty string,
+  // avoiding errors when calling `toLowerCase()`.
+  // If the extension is not found in the map, default to 'application/octet-stream'.
+  return (
+    mimeTypeMap[extension?.toLowerCase() || ""] || "application/octet-stream"
+  );
+}
+
+/**
  * Downloads an image from a URL and uploads it to a server via the ComfyUI upload API.
  * @param imageUrl The URL of the image to download.
  * @param serverAddress The address of the ComfyUI server where the image will be uploaded.
@@ -71,10 +102,11 @@ const downloadAndUploadImage = async (
   // Create a buffer from the response data
   const imageBuffer = Buffer.from(response.data);
 
-  // Create a File object from the buffer with the correct file name
-  const file = new File([imageBuffer], fileName, {
-    type: "image/png", // Optionally adjust or dynamically determine MIME type if needed
-  });
+  // Determine MIME type based on the file extension
+  const mimeType = determineMimeType(fileName);
+
+  // Create a File object from the buffer with the correct file name and MIME type
+  const file = new File([imageBuffer], fileName, { type: mimeType });
 
   // Set up FormData with the File object
   const formData = new FormData();
