@@ -1,34 +1,64 @@
+# ComfyUI Integration Service
 
-# Comfy UI API Proxy
-
-## Overview
-This project provides a proxy layer between client applications and the Comfy UI API. It simplifies client interactions by handling input data processing, managing image URLs, tracking the progress of data processing, and retrieving processed images in base64 encoding.
+This service is designed to integrate with ComfyUI's API, facilitating the download of images from URLs, uploading them to ComfyUI, and handling various aspects of image processing workflows.
 
 ## Features
-- **Data Processing**: Automatically processes incoming data to ensure compatibility with the Comfy UI API.
-- **Image URL Handling**: Manages URLs for images that are processed through the API, ensuring they are correctly formatted and securely transmitted.
-- **Progress Tracking**: Offers real-time updates on the status of data processing, allowing clients to monitor progress and manage workflows efficiently.
-- **Image Retrieval**: Retrieves images processed by the Comfy UI API, converting them into base64 format for easy integration into client applications.
+
+- **Image Handling**: Downloads images from URLs and uploads them to the ComfyUI server.
+- **Workflow Management**: Supports the execution of specific workflows on ComfyUI, including input processing and prompt generation.
+- **Progress Tracking**: Utilizes WebSockets to track and report the progress of image processing tasks.
+- **Result Retrieval**: Fetches processed images and returns them as base64 encoded strings.
 
 ## Getting Started
-To begin using the Comfy UI API Proxy, follow the steps below:
-1. **Setup**: Ensure you have the necessary system prerequisites installed. These include [list specific software requirements, versions].
-2. **Installation**: Clone the repository and install dependencies using:
+
+### Prerequisites
+
+- Node.js
+- npm or Yarn
+- Access to ComfyUI's API
+
+### Installation
+
+1. Clone the repository to your local machine.
+2. Install the necessary dependencies by running:
    ```bash
-   git clone [repository URL]
-   cd [repository directory]
    npm install
    ```
-3. **Configuration**: Configure the proxy settings as per your requirements. Modify the `config.json` file to set up API endpoints, authentication details, and other necessary parameters.
-4. **Running the Proxy**: Start the proxy server with:
+   or
    ```bash
-   npm start
+   yarn install
    ```
-   This will launch the proxy server on the configured port, allowing it to begin handling requests to and from the Comfy UI API.
 
-## Contribution
-Contributions to this project are welcome. Please follow these guidelines:
-- **Issue Tracking**: For bugs or feature requests, open an issue through the GitHub issue tracker.
-- **Pull Requests**: Submit pull requests with a clear list of what you've done. Ensure the PR description clearly describes the problem and solution, including tests that have been conducted.
+### Configuration
 
-For more detailed information on contributing, please refer to the `CONTRIBUTING.md` file.
+- Create a `.env` file in the root of your project directory.
+- Add the necessary environment variables:
+  ```
+  PORT=3000
+  COMFY_WEB_USER=<your-comfyui-username>
+  COMFY_WEB_PASSWORD=<your-comfyui-password>
+  ```
+
+### Running the Server
+
+Execute the following command to start the server:
+
+```bash
+npm start
+```
+
+or if you are using Yarn:
+
+```bash
+yarn start
+```
+
+The server will start running on [http://localhost:3000](http://localhost:3000).
+
+## API Endpoints
+
+- `POST /generate`: Triggers a new workflow on ComfyUI with provided workflow values.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
