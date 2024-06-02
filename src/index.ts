@@ -20,6 +20,8 @@ const basicAuth =
     `${process.env.COMFY_WEB_USER}:${process.env.COMFY_WEB_PASSWORD}`
   ).toString("base64");
 
+let comfyWebSocket: WebSocket | null = null; // This will hold our WebSocket connection
+
 // Middleware to parse JSON bodies
 app.use(express.json());
 
@@ -277,6 +279,31 @@ async function fetchImage(
 }
 
 /**
+ * Establish and maintain a WebSocket connection to the ComfyUI server.
+ */
+const initializeWebSocketConnection = () => {
+  const wsUrl = `${process.env.COMFY_URL}/ws`;
+  comfyWebSocket = new WebSocket(wsUrl, {
+    headers: { Authorization: basicAuth },
+  });
+
+  comfyWebSocket.on("open", () => {
+    console.log("Connected to ComfyUI WebSocket server.");
+  });
+
+  comfyWebSocket.on("close", () => {
+    console.log("WebSocket connection closed. Attempting to reconnect...");
+    setTimeout(initializeWebSocketConnection, 10000); // Reconnect after 10 seconds
+  });
+
+  comfyWebSocket.on("error", (error) => {
+    console.error("WebSocket connection error:", error);
+  });
+};
+
+initializeWebSocketConnection();
+
+/**
  * Endpoint to generate a prompt based on workflow and workflowValues.
  */
 app.post("/generate", async (req: Request, res: Response) => {
@@ -310,6 +337,19 @@ app.post("/generate", async (req: Request, res: Response) => {
     console.error(error);
     res.status(500).send(`Error generating comfy: ${error}`);
   }
+});
+
+app.get("/", (req, res) => {
+  res.send("ComfyUI Proxy Server is running!");
+});
+
+/**
+ * Health check endpoint to assess the availability of the ComfyUI server.
+ */
+app.get("/available", (req, res) => {
+  const isAvailable =
+    comfyWebSocket !== null && comfyWebSocket.readyState === WebSocket.OPEN;
+  res.status(200).json({ available: isAvailable });
 });
 
 // Starts the server
