@@ -1,64 +1,9 @@
-# ComfyUI Integration Service
+# ComfyUI Proxy Server
 
-This service is designed to integrate with ComfyUI's API, facilitating the download of images from URLs, uploading them to ComfyUI, and handling various aspects of image processing workflows.
+### Introduction
 
-## Features
+The ComfyUI Proxy Server allows users to interact with the ComfyUI API to automate the generation of AI images. In ComfyUI, a workflow can be saved in an API format, which is then passed to the proxy server. Users can create and save workflows in ComfyUI, and pass these workflows along with custom input parameters to the API via the proxy server.
 
-- **Image Handling**: Downloads images from URLs and uploads them to the ComfyUI server.
-- **Workflow Management**: Supports the execution of specific workflows on ComfyUI, including input processing and prompt generation.
-- **Progress Tracking**: Utilizes WebSockets to track and report the progress of image processing tasks.
-- **Result Retrieval**: Fetches processed images and returns them as base64 encoded strings.
+If custom images are used as input, the proxy server will download these images, upload them to ComfyUI, and update the values in the workflow accordingly. This setup provides flexibility in where to launch the ComfyUI GPU instance, such as starting a GPU instance on RunPod and using the proxy to generate images from the workflow.
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js
-- npm or Yarn
-- Access to ComfyUI's API
-
-### Installation
-
-1. Clone the repository to your local machine.
-2. Install the necessary dependencies by running:
-   ```bash
-   npm install
-   ```
-   or
-   ```bash
-   yarn install
-   ```
-
-### Configuration
-
-- Create a `.env` file in the root of your project directory.
-- Add the necessary environment variables:
-  ```
-  PORT=3000
-  COMFY_WEB_USER=<your-comfyui-username>
-  COMFY_WEB_PASSWORD=<your-comfyui-password>
-  ```
-
-### Running the Server
-
-Execute the following command to start the server:
-
-```bash
-npm start
-```
-
-or if you are using Yarn:
-
-```bash
-yarn start
-```
-
-The server will start running on [http://localhost:3000](http://localhost:3000).
-
-## API Endpoints
-
-- `POST /generate`: Triggers a new workflow on ComfyUI with provided workflow values.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+This is particularly useful if the process of generating images needs to be automated for bulk generation or if the generation process needs to be integrated into an application.
