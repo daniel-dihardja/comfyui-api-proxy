@@ -6,4 +6,6 @@ The ComfyUI Proxy Server allows users to interact with the ComfyUI API to automa
 
 If custom images are used as input, the proxy server will download these images, upload them to ComfyUI, and update the values in the workflow accordingly. This setup provides flexibility in where to launch the ComfyUI GPU instance, such as starting a GPU instance on RunPod and using the proxy to generate images from the workflow.
 
+The proxy also tracks the generation progress through the WebSocket connection to the ComfyUI server, ensuring that the user only needs to invoke the API and will receive the generated image within the response.
+
 This is particularly useful if the process of generating images needs to be automated for bulk generation or if the generation process needs to be integrated into an application.
