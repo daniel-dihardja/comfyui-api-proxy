@@ -37,7 +37,7 @@ const isValidHttpUrl = (string: string): boolean => {
   }
 };
 
-function determineMimeType(fileName: string): string {
+const determineMimeType = (fileName: string): string => {
   const extension = fileName.split(".").pop();
   const mimeTypeMap: { [key: string]: string } = {
     png: "image/png",
@@ -51,7 +51,7 @@ function determineMimeType(fileName: string): string {
   return (
     mimeTypeMap[extension?.toLowerCase() || ""] || "application/octet-stream"
   );
-}
+};
 
 const downloadAndUploadImage = async (
   imageUrl: string,
@@ -134,9 +134,9 @@ const trackProgress = async (promptId: string) => {
   });
 };
 
-async function fetchImagesFromHistory(promptId: string): Promise<string[]> {
+const fetchImagesFromHistory = async (promptId: string): Promise<string[]> => {
   try {
-    const OUTPUT_NODE_ID = "14"; // Node ID that contains the generated image outputs
+    const OUTPUT_NODE_ID = "14";
     const historyResponse = await axios.get(
       `${process.env.COMFY_URL}/history/${promptId}`,
       { headers: { Authorization: basicAuth } }
@@ -153,13 +153,13 @@ async function fetchImagesFromHistory(promptId: string): Promise<string[]> {
     console.error("Error fetching images from history:", error);
     throw error;
   }
-}
+};
 
-async function fetchImage(
+const fetchImage = async (
   filename: string,
   subfolder: string,
   folderType: string
-): Promise<string> {
+): Promise<string> => {
   try {
     const params = new URLSearchParams({
       filename,
@@ -178,9 +178,9 @@ async function fetchImage(
     console.error("Error fetching an image:", error);
     throw error;
   }
-}
+};
 
-const initializeWebSocketConnection = () => {
+const initializeWebSocketConnection = (): void => {
   const wsUrl = `${process.env.COMFY_URL}/ws`;
   comfyWebSocket = new WebSocket(wsUrl, {
     headers: { Authorization: basicAuth },
