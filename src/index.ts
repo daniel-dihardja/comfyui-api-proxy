@@ -3,6 +3,7 @@ import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 import axios from "axios";
 import WebSocket from "ws";
+import cors from "cors";
 
 import { FormData, File } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
@@ -22,39 +23,22 @@ const basicAuth =
 
 let comfyWebSocket: WebSocket | null = null; // This will hold our WebSocket connection
 
-// Middleware to parse JSON bodies
+// Middleware
 app.use(express.json());
-
-// Middleware to parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true }));
+app.use(cors());
 
-/**
- * Checks if a string is a valid URL.
- * @param string The string to check.
- * @returns boolean indicating if the string is a valid URL.
- */
-const isValidHttpUrl = (string: string) => {
-  let url;
+const isValidHttpUrl = (string: string): boolean => {
   try {
-    url = new URL(string);
+    const url = new URL(string);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch (_) {
     return false;
   }
-  return url.protocol === "http:" || url.protocol === "https:";
 };
 
-/**
- * Determines the MIME type based on the file extension of a given filename.
- *
- * @param fileName The name of the file, including its extension.
- * @returns The MIME type corresponding to the file's extension, or a default
- *          MIME type if the extension is not recognized or absent.
- */
 function determineMimeType(fileName: string): string {
-  // Extract the last segment after a '.' character, which is assumed to be the file extension.
-  const extension: string | undefined = fileName.split(".").pop();
-
-  // Define a mapping of file extensions to MIME types.
+  const extension = fileName.split(".").pop();
   const mimeTypeMap: { [key: string]: string } = {
     png: "image/png",
     jpg: "image/jpeg",
@@ -64,84 +48,44 @@ function determineMimeType(fileName: string): string {
     svg: "image/svg+xml",
     webp: "image/webp",
   };
-
-  // Attempt to get the MIME type from the map using the file extension.
-  // If `extension` is undefined, it defaults to an empty string,
-  // avoiding errors when calling `toLowerCase()`.
-  // If the extension is not found in the map, default to 'application/octet-stream'.
   return (
     mimeTypeMap[extension?.toLowerCase() || ""] || "application/octet-stream"
   );
 }
 
-/**
- * Downloads an image from a URL and uploads it to a server via the ComfyUI upload API.
- * @param imageUrl The URL of the image to download.
- * @param serverAddress The address of the ComfyUI server where the image will be uploaded.
- * @param imageType The type/category of the image being uploaded. Defaults to "input".
- * @param overwrite Whether to overwrite an existing file with the same name. Defaults to false.
- * @returns The server response after the upload.
- */
 const downloadAndUploadImage = async (
   imageUrl: string,
   serverAddress: string,
   imageType: string = "input",
   overwrite: boolean = true
 ): Promise<any> => {
-  // Fetch the image as a buffer
-  const response = await axios({
-    url: imageUrl,
-    responseType: "arraybuffer",
-  });
-
-  // Extract the file name from the URL
+  const response = await axios({ url: imageUrl, responseType: "arraybuffer" });
   const url = new URL(imageUrl);
   const fileName = url.pathname.split("/").pop() || "default_name.png";
-
-  // Create a buffer from the response data
   const imageBuffer = Buffer.from(response.data);
-
-  // Determine MIME type based on the file extension
   const mimeType = determineMimeType(fileName);
-
-  // Create a File object from the buffer with the correct file name and MIME type
   const file = new File([imageBuffer], fileName, { type: mimeType });
-
-  // Set up FormData with the File object
   const formData = new FormData();
   formData.append("image", file);
   formData.append("type", imageType);
   formData.append("overwrite", overwrite.toString());
-
-  // Encode FormData using FormDataEncoder
   const encoder = new FormDataEncoder(formData);
-
-  // Upload the image using the FormDataEncoder
   const uploadResponse = await axios.post(
     `${serverAddress}/upload/image`,
-    Readable.from(encoder.encode()), // Use encode() method to convert to stream
-    {
-      headers: { ...encoder.headers }, // Encoder handles Content-Type and boundary
-    }
+    Readable.from(encoder.encode()),
+    { headers: { ...encoder.headers } }
   );
-
   return uploadResponse.data;
 };
 
-/**
- * Processes input objects, downloading images from URLs and saving them locally.
- * @param input The input object with potential URL values.
- * @returns The processed input with URLs replaced by local filenames.
- */
 const processInput = async (input: {
   [key: string]: string;
 }): Promise<{ [key: string]: string }> => {
   const processedInput = { ...input };
   for (const key in processedInput) {
-    const value = processedInput[key];
-    if (isValidHttpUrl(value)) {
+    if (isValidHttpUrl(processedInput[key])) {
       const resp = await downloadAndUploadImage(
-        value,
+        processedInput[key],
         process.env.COMFY_URL as string
       );
       processedInput[key] = resp.name;
@@ -150,42 +94,26 @@ const processInput = async (input: {
   return processedInput;
 };
 
-/**
- * Maps workflow values into a template workflow by replacing placeholders.
- * @param workflow The workflow template.
- * @param workflowValues The values to replace into the workflow.
- * @returns The workflow with replaced values.
- */
 const mapWorkflowValues = (
-  workflow: undefined,
+  workflow: any,
   workflowValues: { [key: string]: string }
-) => {
+): any => {
   const w = JSON.stringify(workflow);
   return JSON.parse(
-    w.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-      if (Object.prototype.hasOwnProperty.call(workflowValues, key)) {
-        return workflowValues[key];
-      }
-      return match;
-    })
+    w.replace(/\{\{(\w+)\}\}/g, (match, key) =>
+      Object.prototype.hasOwnProperty.call(workflowValues, key)
+        ? workflowValues[key]
+        : match
+    )
   );
 };
 
-/**
- * Tracks the progress of a prompt generation via WebSocket.
- * @param promptId The ID of the prompt to track.
- * @returns A promise that resolves when the generation is complete.
- */
 const trackProgress = async (promptId: string) => {
   return new Promise<void>((resolve) => {
     const comfyWsUrl = `${process.env.COMFY_URL}/ws`;
-    if (!comfyWsUrl) {
-      throw new Error("Missing Comfy WS URL");
-    }
+    if (!comfyWsUrl) throw new Error("Missing Comfy WS URL");
     const client = new WebSocket(comfyWsUrl, {
-      headers: {
-        Authorization: basicAuth,
-      },
+      headers: { Authorization: basicAuth },
     });
     client.on("message", (data, isBinary) => {
       if (!isBinary) {
@@ -206,49 +134,27 @@ const trackProgress = async (promptId: string) => {
   });
 };
 
-/**
- * Fetches the history for a given prompt ID and retrieves the corresponding images.
- * @param {string} promptId - The ID of the prompt.
- * @returns {Promise<Array<Buffer>>} - A promise that resolves to an array of image data in Buffer format.
- */
-async function fetchImagesFromHistory(promptId: string) {
+async function fetchImagesFromHistory(promptId: string): Promise<string[]> {
   try {
-    // Fetch the history data
+    const OUTPUT_NODE_ID = "14"; // Node ID that contains the generated image outputs
     const historyResponse = await axios.get(
       `${process.env.COMFY_URL}/history/${promptId}`,
-      {
-        headers: {
-          Authorization: basicAuth,
-        },
-      }
+      { headers: { Authorization: basicAuth } }
     );
-
-    const historyData = historyResponse.data[promptId].outputs["14"].images;
-
-    if (historyData && historyData.length) {
-      const imagePromises = historyData.map(
-        (item: { filename: string; subfolder: string }) =>
-          fetchImage(item.filename, item.subfolder, "output")
-      );
-
-      // Fetch all images concurrently
-      return Promise.all(imagePromises);
-    } else {
-      throw new Error("No history data available");
-    }
+    const historyData =
+      historyResponse.data[promptId].outputs[OUTPUT_NODE_ID].images;
+    if (!historyData?.length) throw new Error("No history data available");
+    return Promise.all(
+      historyData.map((item: { filename: string; subfolder: string }) =>
+        fetchImage(item.filename, item.subfolder, "output")
+      )
+    );
   } catch (error) {
     console.error("Error fetching images from history:", error);
     throw error;
   }
 }
 
-/**
- * Retrieves an image from the ComfyUI server based on the provided parameters and returns it as a base64 string.
- * @param {string} filename - The name of the image file.
- * @param {string} subfolder - The subfolder where the image is stored.
- * @param {string} folderType - The type of the folder (e.g., 'input', 'output').
- * @returns {Promise<string>} - A promise that resolves to the image data in base64 format.
- */
 async function fetchImage(
   filename: string,
   subfolder: string,
@@ -263,39 +169,29 @@ async function fetchImage(
     const response = await axios.get(
       `${process.env.COMFY_URL}/view?${params}`,
       {
-        responseType: "arraybuffer", // Important to handle binary data
-        headers: {
-          Authorization: basicAuth,
-        },
+        responseType: "arraybuffer",
+        headers: { Authorization: basicAuth },
       }
     );
-    // Convert buffer to base64 string
-    const base64Image = Buffer.from(response.data).toString("base64");
-    return base64Image;
+    return Buffer.from(response.data).toString("base64");
   } catch (error) {
     console.error("Error fetching an image:", error);
     throw error;
   }
 }
 
-/**
- * Establish and maintain a WebSocket connection to the ComfyUI server.
- */
 const initializeWebSocketConnection = () => {
   const wsUrl = `${process.env.COMFY_URL}/ws`;
   comfyWebSocket = new WebSocket(wsUrl, {
     headers: { Authorization: basicAuth },
   });
-
-  comfyWebSocket.on("open", () => {
-    console.log("Connected to ComfyUI WebSocket server.");
-  });
-
+  comfyWebSocket.on("open", () =>
+    console.log("Connected to ComfyUI WebSocket server.")
+  );
   comfyWebSocket.on("close", () => {
     console.log("WebSocket connection closed. Attempting to reconnect...");
-    setTimeout(initializeWebSocketConnection, 10000); // Reconnect after 10 seconds
+    setTimeout(initializeWebSocketConnection, 10000);
   });
-
   comfyWebSocket.on("error", (error) => {
     console.error("WebSocket connection error:", error);
   });
@@ -303,17 +199,10 @@ const initializeWebSocketConnection = () => {
 
 initializeWebSocketConnection();
 
-/**
- * Endpoint to generate a prompt based on workflow and workflowValues.
- */
 app.post("/generate", async (req: Request, res: Response) => {
-  const workflow = req.body.workflow;
-  if (!workflow) {
-    return res.status(400).send("Missing workflow");
-  }
-  const workflowValues = req.body.workflowValues;
-  if (!workflowValues) {
-    return res.status(400).send("Missing workflowValues");
+  const { workflow, workflowValues } = req.body;
+  if (!workflow || !workflowValues) {
+    return res.status(400).send("Missing workflow or workflowValues");
   }
   try {
     const processedWorkflowValues = await processInput(workflowValues);
@@ -331,28 +220,23 @@ app.post("/generate", async (req: Request, res: Response) => {
     await trackProgress(resp.data.prompt_id);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const historyImages = await fetchImagesFromHistory(resp.data.prompt_id);
-    const base64Img = historyImages[0];
-    res.send({ base64Img });
+    res.send({ base64Img: historyImages[0] });
   } catch (error) {
     console.error(error);
     res.status(500).send(`Error generating comfy: ${error}`);
   }
 });
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("ComfyUI Proxy Server is running!");
 });
 
-/**
- * Health check endpoint to assess the availability of the ComfyUI server.
- */
-app.get("/available", (req, res) => {
+app.get("/available", (_req, res) => {
   const isAvailable =
     comfyWebSocket !== null && comfyWebSocket.readyState === WebSocket.OPEN;
   res.status(200).json({ available: isAvailable });
 });
 
-// Starts the server
 app.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);
 });
